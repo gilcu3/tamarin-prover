@@ -17,7 +17,7 @@ default: tamarin
 .PHONY: tamarin
 tamarin:
 	stack setup
-	stack install
+	stack install --local-bin-path .
 
 # Single-threaded Tamarin
 .PHONY: single
