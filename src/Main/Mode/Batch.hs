@@ -33,6 +33,8 @@ import           Control.Monad.IO.Class (MonadIO(liftIO))
 import           System.Exit (die)
 import Theory.Tools.Wellformedness (prettyWfErrorReport)
 import           Text.Printf                     (printf)
+import ClosedTheory (theoryIndexStr,diffTheoryIndexStr)
+import Debug.Trace (traceM)
 
 -- | Batch processing mode.
 batchMode :: TamarinMode
@@ -55,6 +57,9 @@ batchMode = tamarinMode
 
               , flagNone ["parse-only"] (addEmptyArg "parseOnly")
                   "Just parse the input file and pretty print it as-is"
+
+              , flagNone ["precompute-only"] (addEmptyArg "precomputeOnly")
+                  "Just run precomputation and show partial deconstructions"
               ] ++
               outputFlags ++
               toolFlags
@@ -81,6 +86,11 @@ run thisMode as
       res <- mapM (processThy "") inFiles
       let (docs, _) = unzip res
 
+      mapM_ (putStrLn . renderDoc) docs
+  | argExists "precomputeOnly" as = do
+      versionData <- ensureMaudeAndGetVersion as
+      res <- mapM (processThy versionData) inFiles
+      let (docs, _) = unzip res
       mapM_ (putStrLn . renderDoc) docs
   | argExists "outModule" as = do
       versionData <- ensureMaudeAndGetVersion as
@@ -173,6 +183,16 @@ run thisMode as
         either (\t -> return (prettyOpenTheory t, Pretty.emptyDoc))
                (\d -> return (prettyOpenDiffTheory d, Pretty.emptyDoc)) thy
 
+      -- | Execute precomputation steps and print the partial deconstructions
+      else if isPrecomputeOnlyMode then do
+        (report, thy') <- closeTheory versionData thyLoadOptions sig' thy
+        case thy' of
+          Left thy'' -> do
+            traceM (theoryIndexStr thy'')
+            return (Pretty.emptyDoc, ppWf report)
+          Right thy'' -> do
+            traceM (diffTheoryIndexStr thy'')
+            return (Pretty.emptyDoc, ppWf report)
       -- | Translate and check thoery based on specified output module.
       else if isTranslateOnlyMode then do
         (report, thy') <- translateAndCheckTheory versionData thyLoadOptions sig' thy
@@ -192,6 +212,7 @@ run thisMode as
         formalComments = either (filter (/=("","")) . theoryFormalComments) (filter (/=("", "")) . diffTheoryFormalComments)
 
         isParseOnlyMode = get oParseOnlyMode thyLoadOptions
+        isPrecomputeOnlyMode = get oPrecomputeOnlyMode thyLoadOptions
         isTranslateOnlyMode = get oOutputModule thyLoadOptions `elem`
                                 [ModuleSpthy, ModuleSpthyTyped, ModuleProVerif, ModuleProVerifEquivalence, ModuleDeepSec]
 
